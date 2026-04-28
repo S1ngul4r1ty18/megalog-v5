@@ -161,29 +161,40 @@ export interface SystemStatus {
   now: string;
 }
 
+/**
+ * Estrutura de `details_json` da anomalia. Nem todos os campos vêm
+ * sempre populados — anomalias geradas por watchdog (stream/disco/etc)
+ * trazem só `issues` + `checked_at`, sem análise de tráfego. Por isso
+ * todos os campos analíticos são opcionais.
+ */
 export interface AnomalyDetails {
-  total_conns: number;
-  unique_src_ips: number;
-  unique_dst_ips: number;
-  unique_dst_ports: number;
-  p2p_suspect_ips: number;
-  avg_ports_per_ip: number;
-  top_ip_pct: number;
-  port_ranges: { well_known_pct: number; registered_pct: number; ephemeral_pct: number };
-  protocols: Record<string, number>;
+  // Watchdog-style (stream cheio, disco cheio, etc.)
+  issues?: string[];
+  checked_at?: number;
+
+  // Analytics-style (gerado pelo anomaly_analyzer)
+  total_conns?: number;
+  unique_src_ips?: number;
+  unique_dst_ips?: number;
+  unique_dst_ports?: number;
+  p2p_suspect_ips?: number;
+  avg_ports_per_ip?: number;
+  top_ip_pct?: number;
+  port_ranges?: { well_known_pct: number; registered_pct: number; ephemeral_pct: number };
+  protocols?: Record<string, number>;
   ntp_detail?: { ntp_clients: number; ntp_servers: number };
   dns_detail?: { dns_clients: number; dns_servers: number };
-  top_ips: Array<{
+  top_ips?: Array<{
     ip: string; connections: number; dst_ips: number; dst_ports: number;
     pct: number; well_known_pct: number; ephemeral_pct: number;
   }>;
-  top_dst_ips: Array<{ ip: string; count: number; pct: number }>;
-  top_dst_ports: Array<{ port: number; count: number; pct: number; category: string; service: string }>;
+  top_dst_ips?: Array<{ ip: string; count: number; pct: number }>;
+  top_dst_ports?: Array<{ port: number; count: number; pct: number; category: string; service: string }>;
   top_talker?: { ip: string; profile: string; pct: number; dst_ports: number; dst_ips: number };
-  flow_repetition: { max_flow_count: number; top_flows: Array<any> };
-  protocol_anomaly: { udp_on_tcp_ports: number; udp_on_tcp_pct: number; affected_ports: any[] };
-  classification: string;
-  classification_score: number;
-  classification_reasons: string[];
-  possible_causes: string[];
+  flow_repetition?: { max_flow_count: number; top_flows: Array<any> };
+  protocol_anomaly?: { udp_on_tcp_ports: number; udp_on_tcp_pct: number; affected_ports: any[] };
+  classification?: string;
+  classification_score?: number;
+  classification_reasons?: string[];
+  possible_causes?: string[];
 }

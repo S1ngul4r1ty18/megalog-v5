@@ -51,8 +51,23 @@
       </div>
     </section>
 
-    <!-- ── Razões + causas ──────────────────────────────────────────────── -->
-    <section class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <!-- ── Issues do watchdog (anomalias sem analytics) ─────────────────── -->
+    <section v-if="!hasAnalytics && (details?.issues?.length ?? 0) > 0" class="card">
+      <div class="card-header">
+        <span class="card-title">Problemas detectados pelo watchdog</span>
+        <span v-if="details?.checked_at" class="label-micro">verificado {{ fmtDateTime(details.checked_at) }}</span>
+      </div>
+      <div class="card-body space-y-2.5">
+        <div v-for="(issue, i) in details?.issues" :key="i"
+             class="text-[13px] text-text-primary flex gap-2 leading-relaxed">
+          <span class="text-accent-amber font-bold mt-0.5">⚠</span>
+          <span>{{ issue }}</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Razões + causas (só anomalias do analyzer) ───────────────────── -->
+    <section v-if="hasAnalytics" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <div class="card">
         <div class="card-header"><span class="card-title">Por que essa classificação</span></div>
         <div class="card-body space-y-2.5">
@@ -76,7 +91,7 @@
     </section>
 
     <!-- ── Distribuição de portas (gráfico) + protocolos ───────────────── -->
-    <section class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <section v-if="hasAnalytics" class="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <div class="card lg:col-span-2">
         <div class="card-header">
           <span class="card-title">Distribuição de portas destino</span>
@@ -102,7 +117,7 @@
     </section>
 
     <!-- ── Top tabelas ─────────────────────────────────────────────────── -->
-    <section class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <section v-if="hasAnalytics" class="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <div class="card overflow-hidden">
         <div class="card-header"><span class="card-title">Top IPs origem</span></div>
         <table class="tbl">
@@ -148,10 +163,11 @@
     </section>
 
     <!-- ── Análise textual ──────────────────────────────────────────────── -->
-    <section class="card">
+    <section v-if="alert.analysis" class="card">
       <div class="card-header">
-        <span class="card-title">Análise narrativa completa</span>
-        <span class="label-micro">gerada por classifier multi-sinal</span>
+        <span class="card-title">Análise narrativa</span>
+        <span v-if="hasAnalytics" class="label-micro">gerada por classifier multi-sinal</span>
+        <span v-else class="label-micro">{{ alert.classification }}</span>
       </div>
       <div class="card-body">
         <pre class="font-mono text-[12px] text-text-secondary whitespace-pre-wrap leading-relaxed">{{ alert.analysis }}</pre>
@@ -189,6 +205,11 @@ const details = computed<AnomalyDetails | null>(() => {
   try { return JSON.parse(alert.value.details_json); } catch { return null; }
 });
 
+// Anomalias do watchdog (stream cheio, disco cheio, etc.) só trazem
+// `issues` + `checked_at` no details — sem port_ranges/top_ips/etc.
+// Detecta via presença de `port_ranges` (chave que só vem do analyzer).
+const hasAnalytics = computed(() => details.value?.port_ranges != null);
+
 const protoRows = computed(() => {
   const p = details.value?.protocols;
   if (!p) return [];
@@ -223,7 +244,8 @@ async function ack() {
 
 const portsChartOption = computed(() => {
   const d = details.value;
-  if (!d) return {};
+  if (!d?.port_ranges) return {};
+  const pr = d.port_ranges;
   return {
     tooltip: {
       trigger: "axis",
@@ -247,9 +269,9 @@ const portsChartOption = computed(() => {
     series: [{
       type: "bar",
       data: [
-        { value: d.port_ranges.well_known_pct * 100, itemStyle: { color: "#22c55e" } },
-        { value: d.port_ranges.registered_pct * 100, itemStyle: { color: "#22d3ee" } },
-        { value: d.port_ranges.ephemeral_pct  * 100, itemStyle: { color: "#a78bfa" } },
+        { value: pr.well_known_pct * 100, itemStyle: { color: "#22c55e" } },
+        { value: pr.registered_pct * 100, itemStyle: { color: "#22d3ee" } },
+        { value: pr.ephemeral_pct  * 100, itemStyle: { color: "#a78bfa" } },
       ],
       barWidth: "40%",
       itemStyle: { borderRadius: [4, 4, 0, 0] },
