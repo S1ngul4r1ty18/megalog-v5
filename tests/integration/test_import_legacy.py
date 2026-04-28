@@ -83,6 +83,22 @@ def test_detect_schema_b(tmp_path: Path) -> None:
     con.close()
 
 
+def test_detect_schema_c(tmp_path: Path) -> None:
+    db = tmp_path / "x.db"
+    con = sqlite3.connect(str(db))
+    con.executescript("""
+        CREATE TABLE interfaces  (id INTEGER PRIMARY KEY, name TEXT);
+        CREATE TABLE protocols   (id INTEGER PRIMARY KEY, name TEXT);
+        CREATE TABLE conn_states (id INTEGER PRIMARY KEY, name TEXT);
+        CREATE TABLE db_meta     (key TEXT PRIMARY KEY, value TEXT);
+        CREATE TABLE logs (id INTEGER PRIMARY KEY, ts INTEGER);
+    """)
+    con.close()
+    con = sqlite3.connect(str(db))
+    assert detect_schema(con) == "C"
+    con.close()
+
+
 def test_detect_schema_a(tmp_path: Path) -> None:
     db = tmp_path / "x.db"
     con = sqlite3.connect(str(db))
@@ -185,6 +201,68 @@ def test_import_schema_b_synthetic(tmp_path: Path) -> None:
     stats = ops.all_daily_stats()
     assert "2026-04-20" in stats
     assert stats["2026-04-20"][0] == 20
+
+
+# ── Import schema C sintético ────────────────────────────────────────────────
+
+
+def test_import_schema_c_synthetic(tmp_path: Path) -> None:
+    src = tmp_path / "2026-04-20.db"
+    con = sqlite3.connect(str(src))
+    con.executescript("""
+        CREATE TABLE interfaces  (id INTEGER PRIMARY KEY, name TEXT);
+        CREATE TABLE protocols   (id INTEGER PRIMARY KEY, name TEXT);
+        CREATE TABLE conn_states (id INTEGER PRIMARY KEY, name TEXT);
+        CREATE TABLE db_meta     (key TEXT PRIMARY KEY, value TEXT);
+        CREATE TABLE logs (
+            id INTEGER PRIMARY KEY, ts INTEGER NOT NULL,
+            in_iface_id INTEGER, out_iface_id INTEGER, conn_mark TEXT,
+            conn_state_id INTEGER, has_snat INTEGER DEFAULT 0,
+            src_mac TEXT, proto_id INTEGER, tcp_flags TEXT,
+            src_ip INTEGER NOT NULL DEFAULT 0, src_port INTEGER,
+            dst_ip INTEGER NOT NULL DEFAULT 0, dst_port INTEGER,
+            nat_ip INTEGER, nat_port INTEGER, pkt_len INTEGER,
+            log_type TEXT DEFAULT 'nat', raw_msg TEXT
+        );
+        INSERT INTO interfaces  VALUES (1,'ether1'),(2,'ether2');
+        INSERT INTO protocols   VALUES (1,'TCP'),(2,'UDP');
+        INSERT INTO conn_states VALUES (1,'new');
+        INSERT INTO db_meta     VALUES ('schema_origin','test');
+    """)
+    src_ip_int = ip_to_int("100.80.0.119")
+    dst_ip_int = ip_to_int("8.8.8.8")
+    nat_ip_int = ip_to_int("170.245.175.121")
+    for i in range(20):
+        con.execute(
+            "INSERT INTO logs (ts,in_iface_id,out_iface_id,conn_state_id,has_snat,"
+            "proto_id,src_ip,src_port,dst_ip,dst_port,nat_ip,nat_port,pkt_len,tcp_flags,log_type) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (1776657600 + i, 1, 2, 1, 0, 1,
+             src_ip_int, 50000 + i, dst_ip_int, 443, nat_ip_int, 50000 + i,
+             60, 'SYN', 'nat'),
+        )
+    con.commit(); con.close()
+
+    s = _settings(tmp_path)
+    s.cold_storage_dir.mkdir(parents=True)
+    s.state_dir.mkdir(parents=True)
+    reg = IpRegistry(s.ip_registry_path)
+    ops = OperationalStore(s.state_dir / "megalog.db")
+    result = import_file(src, settings=s, registry=reg, ops=ops)
+    reg.close()
+
+    assert result["schema"] == "C"
+    assert result["rows"] == 20
+    pq = Path(result["output"])
+    assert pq.exists()
+
+    con = duckdb.connect(":memory:")
+    rows = con.execute(
+        f"SELECT COUNT(*), COUNT(DISTINCT src_ip_id), COUNT(DISTINCT nat_ip_id) "
+        f"FROM read_parquet('{pq}')"
+    ).fetchone()
+    assert rows == (20, 1, 1)
+    con.close()
 
 
 # ── Import schema A sintético ────────────────────────────────────────────────

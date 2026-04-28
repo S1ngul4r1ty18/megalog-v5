@@ -1,8 +1,11 @@
 """Importa SQLite legados (.db ou .db.gz) do MegaLog v4 para Parquet v5.
 
-Detecta 3 schemas conhecidos automaticamente:
+Detecta 4 schemas conhecidos automaticamente:
   - **v2** (atual no v4): IPs em FK `ip_addresses`, dicts `interfaces`/`protocols`/`conn_states`,
     timestamp INTEGER. É o schema dos `/tmp/legacy/*.db`.
+  - **C** (unificado v4): dicts `interfaces`/`protocols`/`conn_states` sem prefixo,
+    IPs INTEGER inline em `logs.{src,dst,nat}_ip`, tabela `db_meta` com metadados de
+    migração. Resultado de uma normalização A/B → C feita no servidor v4 antigo.
   - **B** (intermediário): IPs como INTEGER, dicts em `d_interfaces`/`d_protocols`/`d_states`,
     timestamp INTEGER.
   - **A** (mais antigo): IPs como TEXT, dicts inline (nomes nas próprias linhas),
@@ -57,6 +60,8 @@ def detect_schema(con: sqlite3.Connection) -> str:
         return "v2"
     if "d_interfaces" in tables or "d_protocols" in tables:
         return "B"
+    if "db_meta" in tables and {"interfaces", "protocols", "conn_states"}.issubset(tables):
+        return "C"
     return "A"
 
 
@@ -84,21 +89,23 @@ def open_legacy_sqlite(path: Path) -> Iterator[tuple[sqlite3.Connection, Path]]:
     Yield (conexão_sqlite_readonly, path_efetivo_no_tmpdir). Limpa tmp ao sair.
     """
     tmpdir = Path(tempfile.mkdtemp(prefix="megalog_import_"))
-    target = tmpdir / path.name.removesuffix(".gz")
-    if path.suffix == ".gz":
-        with gzip.open(path, "rb") as fi, target.open("wb") as fo:
-            shutil.copyfileobj(fi, fo, length=8 * 1024 * 1024)
-    else:
-        # cópia direta (binária) — preserva mtime
-        shutil.copy2(path, target)
-
-    # `immutable=1` impede o SQLite (Python) de tentar inicializar -shm/-wal.
-    con = sqlite3.connect(f"file:{target}?mode=ro&immutable=1", uri=True)
-    con.row_factory = sqlite3.Row
     try:
-        yield con, target
+        target = tmpdir / path.name.removesuffix(".gz")
+        if path.suffix == ".gz":
+            with gzip.open(path, "rb") as fi, target.open("wb") as fo:
+                shutil.copyfileobj(fi, fo, length=8 * 1024 * 1024)
+        else:
+            # cópia direta (binária) — preserva mtime
+            shutil.copy2(path, target)
+
+        # `immutable=1` impede o SQLite (Python) de tentar inicializar -shm/-wal.
+        con = sqlite3.connect(f"file:{target}?mode=ro&immutable=1", uri=True)
+        con.row_factory = sqlite3.Row
+        try:
+            yield con, target
+        finally:
+            con.close()
     finally:
-        con.close()
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
@@ -262,6 +269,67 @@ def _import_b(
     return n
 
 
+def _import_c(
+    src_db: Path, src_con: sqlite3.Connection, cold_path: Path,
+    registry: IpRegistry, home_dir: Path,
+) -> int:
+    """Schema C: unificado v4. IPs INTEGER inline (sem `ip_addresses`),
+    dicts `interfaces`/`protocols`/`conn_states` (sem prefixo `d_`),
+    tabela `db_meta`. Layout de coluna do `logs` já alinhado ao v5.
+    """
+    log.info("  pré-resolvendo IPs únicos do schema C…")
+    ip_int_set: set[int] = set()
+    for col in ("src_ip", "dst_ip", "nat_ip"):
+        for r in src_con.execute(
+            f"SELECT DISTINCT {col} FROM logs WHERE {col} IS NOT NULL AND {col} != 0"
+        ):
+            ip_int_set.add(r[0] & 0xFFFFFFFF)
+    ip_map = {ip_int: registry.get_or_create(ip_int) for ip_int in ip_int_set}
+    registry.flush_hits()
+    log.info("  %d IPs únicos mapeados", len(ip_map))
+
+    safe_out = str(cold_path).replace("'", "''")
+    safe_src = str(src_db).replace("'", "''")
+
+    con = _new_duckdb(home_dir)
+    try:
+        con.execute("INSTALL sqlite; LOAD sqlite;")
+        con.execute(f"ATTACH '{safe_src}' AS src (TYPE SQLITE, READ_ONLY)")
+        _write_ip_map_to_duckdb(con, ip_map)
+
+        n = con.execute("SELECT COUNT(*) FROM src.logs").fetchone()[0]
+
+        con.execute(f"""
+            COPY (
+                SELECT
+                    CAST(l.ts AS UINTEGER)                          AS ts,
+                    CAST(l.in_iface_id   AS USMALLINT)              AS in_iface_id,
+                    CAST(l.out_iface_id  AS USMALLINT)              AS out_iface_id,
+                    CAST(l.proto_id      AS UTINYINT)               AS proto_id,
+                    CAST(l.conn_state_id AS USMALLINT)              AS conn_state_id,
+                    CAST(COALESCE(l.has_snat, 0) AS BOOLEAN)        AS has_snat,
+                    CAST(COALESCE(src_m.global_id, 0) AS UINTEGER)  AS src_ip_id,
+                    CAST(l.src_port AS USMALLINT)                   AS src_port,
+                    CAST(COALESCE(dst_m.global_id, 0) AS UINTEGER)  AS dst_ip_id,
+                    CAST(l.dst_port AS USMALLINT)                   AS dst_port,
+                    CAST(nat_m.global_id AS UINTEGER)               AS nat_ip_id,
+                    CAST(l.nat_port AS USMALLINT)                   AS nat_port,
+                    CAST(l.pkt_len AS USMALLINT)                    AS pkt_len,
+                    l.tcp_flags                                     AS tcp_flags,
+                    COALESCE(l.log_type, 'nat')                     AS log_type
+                FROM src.logs l
+                LEFT JOIN ip_map src_m ON src_m.local_id = l.src_ip
+                LEFT JOIN ip_map dst_m ON dst_m.local_id = l.dst_ip
+                LEFT JOIN ip_map nat_m ON nat_m.local_id = l.nat_ip
+                ORDER BY l.ts, src_m.global_id
+            )
+            TO '{safe_out}' ({_PARQUET_OPTS})
+        """)
+    finally:
+        con.close()
+    return n
+
+
 def _import_a(
     src_db: Path, src_con: sqlite3.Connection, cold_path: Path,
     registry: IpRegistry, home_dir: Path,
@@ -390,6 +458,8 @@ def import_file(
                 n = _import_v2(eff, con, cold_path, registry, settings.state_dir)
             elif schema == "B":
                 n = _import_b(eff, con, cold_path, registry, settings.state_dir)
+            elif schema == "C":
+                n = _import_c(eff, con, cold_path, registry, settings.state_dir)
             else:
                 n = _import_a(eff, con, cold_path, registry, settings.state_dir)
         except Exception as e:
