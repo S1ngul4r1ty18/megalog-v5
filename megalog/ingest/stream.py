@@ -110,11 +110,21 @@ def archive_processed(
     """
     Move arquivo já consumido para `.processed/` e remove arquivos
     arquivados há mais de `keep_hours`.
+
+    Reseta mtime ao mover: a janela de retenção mede "tempo desde o
+    arquivamento", não "tempo desde a última escrita". Sem isso, .raw
+    com mtime herdado de fonte externa (replay/import de logs antigos)
+    seriam apagados imediatamente após mover.
     """
     processed_dir.mkdir(parents=True, exist_ok=True)
     dst = processed_dir / src.name
     src.replace(dst)
-    cutoff = time.time() - keep_hours * 3600
+    now = time.time()
+    try:
+        os.utime(dst, (now, now))
+    except OSError:
+        pass
+    cutoff = now - keep_hours * 3600
     for p in processed_dir.iterdir():
         try:
             if p.is_file() and p.stat().st_mtime < cutoff:
