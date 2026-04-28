@@ -1,0 +1,10 @@
+[Unit]
+Description=MegaLog — Stream watchdog timer (a cada 15 min)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+Unit=megalog-stream-watchdog.service
+
+[Install]
+WantedBy=timers.target

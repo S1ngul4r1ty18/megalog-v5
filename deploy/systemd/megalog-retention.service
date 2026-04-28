@@ -1,0 +1,36 @@
+[Unit]
+Description=MegaLog — Retention job (deleta Parquets > N dias)
+
+[Service]
+Type=oneshot
+User=@MEGALOG_USER@
+Group=@MEGALOG_USER@
+WorkingDirectory=@INSTALL_DIR@
+EnvironmentFile=@CONFIG_FILE@
+ExecStart=@INSTALL_DIR@/.venv/bin/python -m megalog.jobs.retention
+Nice=15
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=@COLD_DIR@ @STATE_DIR@
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+# Hardening avançado (SEC-08)
+MemoryDenyWriteExecute=true
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+ProtectKernelLogs=true
+ProtectClock=true
+ProtectHostname=true
+RemoveIPC=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=megalog-retention

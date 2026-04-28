@@ -1,0 +1,11 @@
+[Unit]
+Description=MegaLog — Analyze timer (diário 02:30)
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+RandomizedDelaySec=5min
+Persistent=true
+Unit=megalog-analyze.service
+
+[Install]
+WantedBy=timers.target

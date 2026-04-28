@@ -1,0 +1,11 @@
+[Unit]
+Description=MegaLog — Archive timer (diário 02:00)
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+RandomizedDelaySec=5min
+Persistent=true
+Unit=megalog-archive.service
+
+[Install]
+WantedBy=timers.target

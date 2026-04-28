@@ -1,0 +1,11 @@
+[Unit]
+Description=MegaLog — Retention timer (semanal, segundas 03:00)
+
+[Timer]
+OnCalendar=Mon *-*-* 03:00:00
+RandomizedDelaySec=15min
+Persistent=true
+Unit=megalog-retention.service
+
+[Install]
+WantedBy=timers.target

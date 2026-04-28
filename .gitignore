@@ -1,0 +1,64 @@
+# ── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+build/
+dist/
+*.egg
+
+# venv local (regenerada pelo install.sh)
+.venv/
+venv/
+
+# Caches de teste/lint
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# ── Frontend (Node/Vite) ────────────────────────────────────────────────────
+frontend/node_modules/
+frontend/.vite/
+frontend/.cache/
+
+# Logs locais do npm
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+# ── IDE / SO ────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Runtime / dados (nunca devem viajar pro repo) ───────────────────────────
+# Caso alguém aponte os defaults do MegaLog pra dentro do repo por engano.
+/dados1/
+/dados2/
+*.duckdb
+*.duckdb.wal
+*.parquet
+*.db-shm
+*.db-wal
+
+# ── Frontend build (incluído no repo — comentado) ───────────────────────────
+# Decisão: mantemos `frontend/dist/` versionado para que o install.sh num host
+# sem Node/npm consiga rodar sem precisar buildar (dependência de ~250 MB).
+# Se preferir excluir e exigir build local, descomente:
+# frontend/dist/
+
+# ── Secrets / config local (nunca commitar) ─────────────────────────────────
+.env
+.env.local
+*.pem
+*.key
+secrets/

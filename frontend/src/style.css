@@ -1,0 +1,186 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Montserrat (variable, auto-hospedada em /fonts/) ──────────────────────
+   Os dois TTFs cobrem 100-900 (peso) + italic. font-display:swap evita FOIT;
+   format('truetype-variations') ativa variações de peso pelo navegador. */
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/Montserrat-VariableFont_wght.ttf") format("truetype-variations");
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/Montserrat-Italic-VariableFont_wght.ttf") format("truetype-variations");
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  html, body, #app { height: 100%; }
+  html { background-color: #0a0c12; }
+  body {
+    @apply bg-bg text-text-primary antialiased font-sans;
+    font-feature-settings: "ss01";
+  }
+
+  ::selection { background: theme(colors.primary.DEFAULT); color: #0a0c12; }
+
+  /* Scrollbar discreta no dark */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.08);
+    border-radius: 5px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.16); background-clip: padding-box; border: 2px solid transparent; }
+
+  /* Inputs nativos */
+  input::placeholder, textarea::placeholder { color: theme(colors.text.dim); }
+  input[type="date"]::-webkit-calendar-picker-indicator,
+  input[type="time"]::-webkit-calendar-picker-indicator {
+    filter: invert(1) opacity(0.5);
+    cursor: pointer;
+  }
+}
+
+@layer components {
+  /* ── Tipografia utilitária ────────────────────────────────────────────── */
+  .label-micro {
+    @apply text-micro font-bold uppercase text-text-muted;
+  }
+  .num-tabular {
+    @apply tabular-nums tracking-tight;
+  }
+
+  /* ── Botões ──────────────────────────────────────────────────────────── */
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md
+           px-3 py-1.5 text-[12.5px] font-semibold transition-all
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-ring
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-primary text-bg hover:brightness-110 active:brightness-95;
+  }
+  .btn-secondary {
+    @apply btn bg-white/[.04] text-text-primary border border-border
+           hover:bg-white/[.08] hover:border-border-strong;
+  }
+  .btn-ghost {
+    @apply btn text-text-secondary hover:bg-white/[.04] hover:text-text-primary;
+  }
+  .btn-danger {
+    @apply btn bg-accent-red/15 text-accent-red border border-accent-red/30
+           hover:bg-accent-red/25;
+  }
+
+  /* ── Inputs ──────────────────────────────────────────────────────────── */
+  .input {
+    @apply w-full rounded-md bg-bg-input border border-border
+           px-3 py-1.5 text-[13px] text-text-primary
+           placeholder:text-text-dim
+           transition-colors
+           focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary-ring;
+  }
+  select.input {
+    @apply pr-8 cursor-pointer;
+  }
+  .label {
+    @apply label-micro mb-1 block;
+  }
+
+  /* ── Cards ───────────────────────────────────────────────────────────── */
+  .card {
+    @apply rounded-xl bg-bg-card border border-border transition-colors;
+  }
+  .card-hover {
+    @apply hover:border-border-strong;
+  }
+  .card-header {
+    @apply px-5 py-3.5 border-b border-border flex items-center justify-between;
+  }
+  .card-title {
+    @apply text-[13px] font-semibold text-text-primary;
+  }
+  .card-body { @apply px-5 py-4; }
+
+  /* ── Badges ──────────────────────────────────────────────────────────── */
+  .badge {
+    @apply inline-flex items-center gap-1 rounded
+           px-1.5 py-0.5 text-[10.5px] font-bold uppercase tracking-wider;
+  }
+  .badge-ok    { @apply badge bg-accent-green/15 text-accent-green; }
+  .badge-warn  { @apply badge bg-accent-amber/15 text-accent-amber; }
+  .badge-error { @apply badge bg-accent-red/15   text-accent-red; }
+  .badge-info  { @apply badge bg-primary-bg      text-primary; }
+  .badge-muted { @apply badge bg-white/[.04]     text-text-secondary; }
+
+  /* ── Status dot (com pulse opcional) ─────────────────────────────────── */
+  .dot {
+    @apply inline-block size-2 rounded-full;
+  }
+  .dot-ok    { @apply dot bg-accent-green; }
+  .dot-warn  { @apply dot bg-accent-amber; }
+  .dot-error { @apply dot bg-accent-red; }
+  .dot-muted { @apply dot bg-text-dim; }
+  .dot-pulse { @apply animate-pulse-dot; }
+
+  /* ── Tabela densa ────────────────────────────────────────────────────── */
+  table.tbl {
+    @apply w-full text-[13px] border-separate border-spacing-0;
+  }
+  /* Default do <th> alinha à esquerda; `.text-right` na classe inline
+     sobrescreve via cascata. Não usamos text-left hard-coded. */
+  table.tbl thead th {
+    @apply bg-bg-card sticky top-0 z-10
+           px-3 py-2 label-micro
+           border-b border-border;
+  }
+  table.tbl tbody td {
+    @apply px-3 py-2 border-b border-border text-text-primary;
+  }
+  table.tbl tbody tr {
+    @apply transition-colors;
+  }
+  table.tbl tbody tr:hover { @apply bg-bg-elevated; }
+  table.tbl td.mono, table.tbl th.mono {
+    @apply font-mono text-[12px] tabular-nums text-text-secondary;
+  }
+  table.tbl td.num {
+    @apply font-mono text-[12.5px] tabular-nums text-right;
+  }
+  /* Variante "auto": tabela não estica 100%; útil quando poucas colunas
+     curtas (ex: lista de dias). Evita o efeito "valores nadando". */
+  table.tbl-auto {
+    @apply w-auto;
+  }
+  /* Variante "compact": padding menor + colunas só ocupam o necessário
+     (w:1% + whitespace-nowrap nas células força encolhimento natural).
+     Resultado: colunas ficam coladas ao conteúdo, sem "espaço nadando". */
+  table.tbl-compact thead th,
+  table.tbl-compact tbody td {
+    @apply px-2.5 py-1.5;
+  }
+  table.tbl-compact {
+    @apply w-auto min-w-full;
+  }
+
+  /* ── Skeleton loader ─────────────────────────────────────────────────── */
+  .skeleton {
+    @apply rounded bg-white/[.04] animate-shimmer;
+  }
+}
+
+@layer utilities {
+  .num { font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+}

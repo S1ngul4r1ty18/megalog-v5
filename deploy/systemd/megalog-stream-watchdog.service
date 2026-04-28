@@ -1,0 +1,39 @@
+[Unit]
+Description=MegaLog — Stream watchdog (offsets staleness + buffer size)
+After=network.target
+
+[Service]
+Type=oneshot
+User=@MEGALOG_USER@
+Group=@MEGALOG_USER@
+WorkingDirectory=@INSTALL_DIR@
+EnvironmentFile=@CONFIG_FILE@
+ExecStart=@INSTALL_DIR@/.venv/bin/python -m megalog.jobs.stream_watchdog
+Nice=19
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=@STATE_DIR@ @STREAM_DIR@
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+ProtectKernelLogs=true
+ProtectClock=true
+ProtectHostname=true
+RemoveIPC=true
+
+# Watchdog não deve abortar o boot — exit 1 é normal quando há issue
+SuccessExitStatus=0 1
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=megalog-watchdog
