@@ -8,6 +8,7 @@ authors = [{ name = "Igor de Andrade Picanço", email = "igor.iapicanco@gmail.co
 requires-python = ">=3.11"
 dependencies = [
     "duckdb>=1.1.0",
+    "pyarrow>=18.0.0",
     "uvloop>=0.21.0",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
