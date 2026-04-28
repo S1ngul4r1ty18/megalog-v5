@@ -1,8 +1,8 @@
-"""Testes do parser — cobre 4 formatos de timestamp + line continuation +
+"""Testes do parser — cobre 5 formatos de timestamp + line continuation +
 edge cases vistos em produção (interfaces com espaço, IPs CGNAT)."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -46,6 +46,17 @@ LINE_FORMAT_D = (
     "(100.80.0.99:44879->170.245.175.121:44879)->172.217.172.36:443, len 56"
 )
 
+# Formato E: ISO 8601 com T e timezone (RFC 3339). Visto em backups v4
+# onde rsyslog reformatou os logs do Mikrotik. Note também o prefixo
+# duplicado "LOG_NAT: LOG_NAT forward:" — pattern típico desses backups.
+LINE_FORMAT_E = (
+    "2025-11-15T00:16:50-04:00 BORDA-5K9 LOG_NAT: LOG_NAT forward: "
+    "in:VLAN P2P out:ether3, connection-mark:Link_2_Con "
+    "connection-state:new,snat src-mac 48:a9:8a:f6:ae:e7, proto UDP, "
+    "100.80.0.71:63846->157.240.31.33:443, NAT "
+    "(100.80.0.71:63846->170.245.175.121:63846)->157.240.31.33:443, len 1280"
+)
+
 # Continuation: a quebra Mikrotik fica DENTRO de um IP:PORT,
 # deixando a linha 2 começando com ":porta," (regex RE_CONTINUATION).
 LINE_BROKEN_PART_A = (
@@ -68,6 +79,7 @@ LINE_BROKEN_PART_B = (
         (LINE_FORMAT_B, "B", "Apr 20"),
         (LINE_FORMAT_C, "C", "10:15:32"),
         (LINE_FORMAT_D, "D", "Apr 20"),
+        (LINE_FORMAT_E, "E", "2025-11-15T00:16:50"),
     ],
 )
 def test_format_detection(line: str, expected_fmt: str, expected_ts_prefix: str) -> None:
@@ -113,6 +125,23 @@ def test_parse_ts_format_c_inherits_today() -> None:
     assert dt == datetime(2026, 4, 20, 10, 15, 32)
 
 
+def test_parse_ts_format_e_iso_with_timezone() -> None:
+    """Formato E preserva timezone — int(dt.timestamp()) dá UTC consistente."""
+    dt = parse_ts("2025-11-15T00:16:50-04:00")
+    assert dt.tzinfo is not None
+    expected_utc = datetime(2025, 11, 15, 4, 16, 50, tzinfo=timezone.utc)
+    assert int(dt.timestamp()) == int(expected_utc.timestamp())
+
+
+def test_parse_ts_format_e_iso_z_suffix() -> None:
+    """Z (UTC zulu) também é ISO 8601 válido."""
+    dt = parse_ts("2025-11-15T04:16:50Z")
+    assert dt.tzinfo is not None
+    assert int(dt.timestamp()) == int(
+        datetime(2025, 11, 15, 4, 16, 50, tzinfo=timezone.utc).timestamp()
+    )
+
+
 # ── normalize_body ───────────────────────────────────────────────────────────
 
 
@@ -128,6 +157,13 @@ def test_normalize_body_handles_firewall_info() -> None:
     assert body and body.startswith("forward:")
 
 
+def test_normalize_body_strips_repeated_uppercase_prefix() -> None:
+    """Backups v4 têm `LOG_NAT: LOG_NAT forward:` (segundo token sem `:`)."""
+    body, kind = normalize_body("LOG_NAT: LOG_NAT forward: in:ether1 out:ether2, ...")
+    assert kind == "nat"
+    assert body and body.startswith("forward:")
+
+
 def test_normalize_body_unknown_returns_other() -> None:
     body, kind = normalize_body("topics,info: random message")
     # 'topics' começa com minúscula, não casa o regex de prefixo;
@@ -139,7 +175,10 @@ def test_normalize_body_unknown_returns_other() -> None:
 # ── parse_line — end-to-end por formato ───────────────────────────────────────
 
 
-@pytest.mark.parametrize("line", [LINE_FORMAT_A, LINE_FORMAT_B, LINE_FORMAT_C, LINE_FORMAT_D])
+@pytest.mark.parametrize(
+    "line",
+    [LINE_FORMAT_A, LINE_FORMAT_B, LINE_FORMAT_C, LINE_FORMAT_D, LINE_FORMAT_E],
+)
 def test_parse_line_extracts_nat_fields(line: str) -> None:
     parsed = parse_line(line, now=datetime(2026, 4, 20, 12, 0, 0))
     assert parsed is not None
@@ -150,6 +189,18 @@ def test_parse_line_extracts_nat_fields(line: str) -> None:
     assert parsed.dst_port > 0
     assert parsed.pkt_len > 0
     assert parsed.log_type == "nat"
+
+
+def test_parse_line_iso_format_uses_utc_timestamp() -> None:
+    """ISO 8601 com TZ explícita: `ts` deve ser UTC, independente do TZ do host."""
+    parsed = parse_line(LINE_FORMAT_E)
+    assert parsed is not None
+    expected_ts = int(
+        datetime(2025, 11, 15, 4, 16, 50, tzinfo=timezone.utc).timestamp()
+    )
+    assert parsed.ts == expected_ts
+    assert parsed.has_snat is True
+    assert parsed.in_iface == "VLAN P2P"
 
 
 def test_parse_line_preserves_interface_with_space() -> None:

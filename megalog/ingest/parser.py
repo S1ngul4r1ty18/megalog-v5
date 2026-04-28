@@ -41,6 +41,13 @@ RE_TS_D = re.compile(
     r"^<\d+>(\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})\s+\S+\s+(.+)$"
 )
 
+# Formato E: 2025-11-15T00:16:50-04:00 HOSTNAME MSG (ISO 8601 / RFC 3339).
+# Visto em backups do MegaLog v4 com syslog reformatado em RFC 3339.
+RE_TS_E = re.compile(
+    r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[.,]\d+)?(?:Z|[+-]\d{2}:?\d{2})?)"
+    r"\s+\S+\s+(.+)$"
+)
+
 # Linha de continuação Mikrotik (IP:PORT quebrado entre dois pacotes UDP)
 RE_CONTINUATION = re.compile(r"^\s*(\d{1,3})?:\d+[,\s\)]")
 
@@ -121,6 +128,8 @@ def extract_ts_and_body(raw_line: str) -> tuple[str | None, str | None, str | No
     line = raw_line.strip()
     if not line:
         return None, None, None
+    if m := RE_TS_E.match(line):
+        return m.group(1), m.group(2).strip(), "E"
     if m := RE_TS_A.match(line):
         return m.group(1), m.group(2).strip(), "A"
     if m := RE_TS_B.match(line):
@@ -140,6 +149,14 @@ def parse_ts(ts_str: str, *, now: datetime | None = None) -> datetime:
     """
     now = now or datetime.now()
     ts_str = ts_str.strip()
+
+    # Formato E — ISO 8601 com T (RFC 3339). Pode ter timezone explícita;
+    # se tiver, fromisoformat retorna aware e ts.timestamp() já dá UTC correto.
+    if "T" in ts_str:
+        try:
+            return datetime.fromisoformat(ts_str)
+        except ValueError:
+            pass
 
     # Formato A — completo
     if len(ts_str) == 19 and ts_str[4] == "-":
@@ -178,7 +195,10 @@ def normalize_body(body: str) -> tuple[str | None, str]:
     """Remove prefixo LOG_NAT:/CGNAT:/etc., devolve (corpo, log_type)."""
     if not body:
         return None, "other"
-    body = re.sub(r"^[A-Z][A-Z0-9_\-]+:\s*", "", body)
+    # Remove um ou mais tokens MAIÚSCULOS de prefixo. Cobre tanto o caso
+    # comum (`LOG_NAT: forward:`) quanto o duplicado dos backups v4
+    # (`LOG_NAT: LOG_NAT forward:` — onde o segundo token não tem `:`).
+    body = re.sub(r"^(?:[A-Z][A-Z0-9_\-]+[:\s]+)+", "", body)
     if m := RE_STRIP_PREFIX.match(body):
         return m.group(1), "nat"
     if body.lower().startswith("forward:"):
