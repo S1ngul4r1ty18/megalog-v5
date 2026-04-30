@@ -3,7 +3,7 @@ name = "megalog"
 version = "5.0.0a1"
 description = "Sistema de auditoria CGNAT — reescrita v5 (DuckDB + Parquet + FastAPI + Vue)"
 readme = "README.md"
-license = { text = "MIT" }
+license = { text = "AGPL-3.0-or-later" }
 authors = [{ name = "Igor de Andrade Picanço", email = "igor.iapicanco@gmail.com" }]
 requires-python = ">=3.11"
 dependencies = [

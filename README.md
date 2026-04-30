@@ -231,4 +231,4 @@ megalog/
 
 ---
 
-**Licença:** ver [LICENSE](LICENSE).
+**Licença:** GNU Affero General Public License v3.0 ou posterior (AGPL-3.0-or-later) — ver [LICENSE](LICENSE).
